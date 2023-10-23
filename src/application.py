@@ -34,20 +34,20 @@ class VoicemailRecognitionApplication:
         "/stor/data/logs/"
     )
     # Default audio recognition interval
-    audio_interval: float = os.getenv(
+    audio_interval: float = float(os.getenv(
         "DEFAULT_AUDIO_INTERVAL",
         2.0
-    )
+    ))
     # Default audio sample rate
-    audio_sample_rate: int = os.getenv(
+    audio_sample_rate: int = int(os.getenv(
         "DEFAULT_AUDIO_RATE",
         8000
-    )
+    ))
     # Interval of silence length to be excluded before recognition
-    audio_silence_exclude_interval: float = os.getenv(
+    audio_silence_exclude_interval: float = float(os.getenv(
         "DEFAULT_AUDIO_SILENCE_EXCLUDE_INTERVAL",
         0.4
-    )
+    ))
     audio_silence_coverage_chunks: bytearray = bytearray(
         os.getenv(
             "DEFAULT_AUDIO_SILENCE_COVERAGE_LENGTH",
