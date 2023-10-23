@@ -59,7 +59,7 @@ class VoicemailRecognitionApplication:
     database_user: str = os.getenv("DATABASE_USER", "root")
     database_password: str = os.getenv("DATABASE_PASSWORD", "root")
     database_host: str = os.getenv("DATABASE_HOST", "127.0.0.1")
-    database_port: int = os.getenv("DATABASE_PORT", 3306)
+    database_port: int = int(os.getenv("DATABASE_PORT", 3306))
     database_name: str = os.getenv("DATABASE_NAME", "speecher")
 
     # Class initialization
