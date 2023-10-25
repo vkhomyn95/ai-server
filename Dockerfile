@@ -4,7 +4,7 @@ WORKDIR /usr/src
 
 COPY requirements.txt requirements.txt
 
-RUN python -m venv venv.
+RUN python -m venv venv
 
 RUN python -m pip install grpcio
 
