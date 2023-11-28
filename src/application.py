@@ -17,7 +17,7 @@ class VoicemailRecognitionApplication:
 
     app_host: str = os.getenv(
         "APP_HOST",
-        "127.0.0.1"
+        "192.168.1.68"
     )
     app_port: str = os.getenv(
         "APP_PORT",
@@ -35,9 +35,22 @@ class VoicemailRecognitionApplication:
     )
     # Default audio recognition interval
     audio_interval: float = float(os.getenv(
-        "DEFAULT_AUDIO_INTERVAL",
+        "DEFAULT_MAX_AUDIO_INTERVAL",
         2.0
     ))
+    # Default audio recognition interval
+    max_predictions: int = int(os.getenv(
+        "DEFAULT_MAX_PREDICTIONS",
+        2
+    ))
+    # Default recognition prediction criteria
+    prediction_criteria: str = os.getenv(
+        "DEFAULT_PREDICTION_CRITERIA",
+        "(<human, human | human>,"
+        " <voicemail, human | human>,"
+        " <human, voicemail | human>,"
+        " <voicemail, voicemail | voicemail>)"
+    )
     # Default audio sample rate
     audio_sample_rate: int = int(os.getenv(
         "DEFAULT_AUDIO_RATE",
@@ -73,15 +86,3 @@ class VoicemailRecognitionApplication:
     )
     auth = VoicemailRecognitionAuthenticator(db.instance())
     util = VoicemailRecognitionAudioUtil()
-
-    # db.insert_user(
-    #     "Volodymyr",
-    #     "Khomyn",
-    #     "vkhomyn@viptime.net",
-    #     "0984154969",
-    #     "voiptime.net",
-    #     True,
-    #     1000,
-    #     True,
-    #     1000
-    # )

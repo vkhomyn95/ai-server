@@ -39,10 +39,8 @@ nvidia-cusparse-cu11==11.7.4.91
 nvidia-nccl-cu11==2.14.3
 nvidia-nvtx-cu11==11.7.91
 packaging==23.1
-Pillow==10.0.1
 platformdirs==3.10.0
 pooch==1.7.0
-protobuf==4.24.2
 pycparser==2.21
 pyparsing==3.1.1
 python-dateutil==2.8.2
@@ -62,3 +60,5 @@ typing_extensions==4.7.1
 urllib3==2.0.4
 webrtcvad-wheels==2.0.11.post1
 PyJWT
+google-cloud-speech
+Pillow

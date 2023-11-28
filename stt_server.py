@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import os
 import time
@@ -8,6 +7,9 @@ from concurrent import futures
 from typing import Iterable
 
 import grpc
+from google.cloud.speech_v2 import SpeechClient, ExplicitDecodingConfig
+from google.cloud.speech_v2.types import cloud_speech
+from google.oauth2 import service_account
 from google.protobuf import duration_pb2
 
 import stt_pb2
@@ -33,7 +35,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
 
         return super().Recognize(request, context)
 
-    async def StreamingRecognize(
+    def StreamingRecognize(
             self,
             request_iterator: Iterable[stt_pb2.StreamingRecognizeRequest],
             context
@@ -59,20 +61,24 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             # Validate authentication principle
             if not authentication:
                 logging.error(f'== Request {request_id} authorization failed using bearer {token}')
-                await context.abort(
+                context.abort(
                     grpc.StatusCode.PERMISSION_DENIED,
                     "Authorization failed using bearer {}".format(token)
                 )
 
-            await asyncio.create_task(self.__split_stream(request_iterator, context, request_id, authentication))
+            # AI AMD stream recognition
+            return self.__split_stream_amd(request_iterator, context, request_id, authentication)
+
+            # AI STT stream recognition
+            # self.__split_stream_stt(request_iterator, context, request_id, authentication)
 
         else:
             logging.error(f'== Request {request_id} authorization failed for None metadata')
-            await context.abort(
+            context.abort(
                 grpc.StatusCode.PERMISSION_DENIED, "Authorization failed"
             )
 
-    async def __split_stream(self, request_iterator, context, request_id, authentication):
+    def __split_stream_amd(self, request_iterator, context, request_id, authentication):
         """ Place the items from the request_iterator into each
             queue in the list of queues. When using VAD (continuous
             = True), the end-of-speech (EOS) can occur when the
@@ -80,7 +86,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             first.
         """
 
-        await context.send_initial_metadata(
+        context.send_initial_metadata(
             [
                 ("x-request-id", request_id)
             ]
@@ -88,47 +94,32 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
 
         # Create the directory if it doesn't exist
         os.makedirs(self.app.audio_dir, exist_ok=True)
+        os.makedirs(self.app.logger_dir, exist_ok=True)
 
-        # variables to be initialized per request
-        config = {}
+        # retrieve variables to be initialized per request
+        configurations = next(request_iterator)
+        config = self.app.util.parse_config_from_request(self.app, configurations.streaming_config)
         predictions = []
+        file_chunks = b''
         audio_chunks = b''
         start = time.time()
-        max_predictions = 2
         num_received_samples = 0
-        prediction_criteria = None
-        enable_interim_results = True
-        sample_rate_hertz = self.app.audio_sample_rate
-        desired_num_samples = sample_rate_hertz * self.app.audio_interval
-        # end variables to be initialized per request
+        predictions_count_reached = False
 
-        async for chunk in request_iterator:
-            # extract config from first request iterator
-            if not config:
-                config = self.app.util.parse_config_from_request(chunk.streaming_config)
-                max_predictions = config['interim_results_config']['max_predictions']
-                enable_interim_results = config['interim_results_config']['enable_interim_results']
-                desired_num_samples = config['sample_rate_hertz'] * config['interim_results_config']['interval']
-                # if enabled interim. Then do recognition using criteria condition
-                if enable_interim_results:
-                    prediction_criteria = self.app.util.parse_config_prediction_criteria(
-                        config['interim_results_config']['prediction_criteria'],
-                        max_predictions
-                    )
-
-            # fill audio variable with bytes content
+        for chunk in request_iterator:
             predicted = None
             file_name = None
+            file_chunks += chunk.audio_content
             audio_chunks += chunk.audio_content
             num_received_samples += len(chunk.audio_content)
 
-            if num_received_samples >= desired_num_samples:
+            if num_received_samples >= config['desired_num_samples'] and not predictions_count_reached:
                 filtered_chunks = self.app.util.swap_zero_bytes(self.app.audio_silence_coverage_chunks, audio_chunks)
 
                 num_filtered_samples = len(filtered_chunks)
 
                 # if audio variable contains desired number of audio chunks
-                if num_filtered_samples >= desired_num_samples:
+                if num_filtered_samples >= config['desired_num_samples']:
                     file_name = str(uuid.uuid4()) + ".wav"
                     file_path = os.path.join(self.app.audio_dir, file_name)
 
@@ -158,7 +149,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 else:
                     logging.info(
                         f' == Request {request_id} unsuccessfully predicted because received {num_filtered_samples}'
-                        f' through required {desired_num_samples} audio samples'
+                        f' through required {config["desired_num_samples"]} audio samples'
                     )
                     audio_chunks = filtered_chunks
                     num_received_samples = num_received_samples - (num_received_samples - num_filtered_samples)
@@ -169,18 +160,20 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 recognition_result = stt_pb2.SpeechRecognitionResult(
                     start_time=duration_pb2.Duration(
                         seconds=int(start),
-                        nanos=int((start - int(start)) * 10**9)
+                        nanos=int((start - int(start)) * 10 ** 9)
                     ),
                     end_time=duration_pb2.Duration(
                         seconds=int(finish),
-                        nanos=int((finish - int(finish)) * 10**9)
+                        nanos=int((finish - int(finish)) * 10 ** 9)
                     )
                 )
-                predictions_count_reached = len(predictions) >= max_predictions
+                predictions_count_reached = len(predictions) >= config['interim_results_config']['max_predictions']
 
                 # If interim result enabled and prediction count was reached than define final result
-                if enable_interim_results and predictions_count_reached:
-                    transcript, confidence = self.app.util.build_schema_condition(predictions, prediction_criteria)
+                if config['interim_results_config']['enable_interim_results'] and predictions_count_reached:
+                    transcript, confidence = self.app.util.build_schema_condition(
+                        predictions, config['prediction_criteria']
+                    )
                     logging.info(
                         f'  == Request {request_id} predicted schema was build as {transcript}.'
                         f' Total recognition time elapsed {finish - start}'
@@ -217,25 +210,103 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                     config["extension"],
                     authentication["id"]
                 )
+                yield response
+            elif predictions_count_reached:
+                file_name = request_id + ".wav"
+                file_path = os.path.join(self.app.audio_dir, file_name)
 
-                await context.write(response)
+                with wave.open(file_path, 'wb') as wf:
+                    wf.setnchannels(1)  # Mono audio
+                    wf.setsampwidth(2)  # 16-bit audio
+                    wf.setframerate(config['sample_rate_hertz'])  # Sample rate
+                    wf.writeframes(file_chunks)
 
-                if predictions_count_reached:
-                    self.app.db.increment_tariff(
-                        authentication["tariff_id"],
-                        int(len(predictions) * config['interim_results_config']['interval'])
-                    )
-                    return
-                await asyncio.sleep(1)
+                self.app.db.increment_tariff(
+                    authentication["tariff_id"],
+                    int(len(predictions) * config['interim_results_config']['max_interval'])
+                )
+                yield
+
+    def __split_stream_stt(self, request_iterator, context, request_id, authentication):
+        """ Place the items from the request_iterator into each
+            queue in the list of queues. When using VAD (continuous
+            = True), the end-of-speech (EOS) can occur when the
+            stream ends or inactivity is detected, whichever occurs
+            first.
+        """
+
+        context.send_initial_metadata(
+            [
+                ("x-request-id", request_id)
+            ]
+        )
+
+        # Create the directory if it doesn't exist
+        os.makedirs(self.app.audio_dir, exist_ok=True)
+        os.makedirs(self.app.logger_dir, exist_ok=True)
+
+        """ GOOGLE """
+        # Instantiates a client
+        credential_path = "/home/vkhomyn/Documents/voiptime/sttvoiptime.json"
+        project_id = "voiptime-speech-to-text"
+        credentials = service_account.Credentials.from_service_account_file(credential_path)
+        client = SpeechClient(credentials=credentials)
+        features = cloud_speech.RecognitionFeatures(
+            max_alternatives=1
+        )
+        explicit_decoding_config = cloud_speech.ExplicitDecodingConfig(
+            encoding=ExplicitDecodingConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=8000,
+            audio_channel_count=1
+        )
+        recognition_config = cloud_speech.RecognitionConfig(
+            auto_decoding_config=cloud_speech.AutoDetectDecodingConfig(),
+            language_codes=["uk-UA"],
+            model="long",
+            features=features,
+            explicit_decoding_config=explicit_decoding_config
+        )
+        """ GOOGLE BLOCK """
+
+        streaming_features = cloud_speech.StreamingRecognitionFeatures(
+            interim_results=True
+        )
+        streaming_config = cloud_speech.StreamingRecognitionConfig(
+            config=recognition_config,
+            streaming_features=streaming_features
+        )
+        config_request = cloud_speech.StreamingRecognizeRequest(
+            recognizer=f"projects/{project_id}/locations/global/recognizers/_",
+            streaming_config=streaming_config,
+        )
+
+        audio_requests = (
+            cloud_speech.StreamingRecognizeRequest(audio=audio.audio_content) for audio in request_iterator if audio.audio_content
+        )
+
+        responses = []
+
+        def requests(config: cloud_speech.RecognitionConfig, audio: list) -> list:
+            yield config
+            yield from audio
+
+        responses_iterator = client.streaming_recognize(
+            requests=requests(config_request, audio_requests)
+        )
+
+        for response in responses_iterator:
+            responses.append(response)
+            for result in response.results:
+                print(f"Transcript: {result.alternatives[0].transcript}")
 
 
-async def serve():
+def serve():
     """ Execute the coroutine server and return the result.
 
         Asynchronous requests are managed
     """
 
-    server = grpc.aio.server(
+    server = grpc.server(
         futures.ThreadPoolExecutor(
             max_workers=1
         )
@@ -249,9 +320,9 @@ async def serve():
     )
     server.add_insecure_port("{}:{}".format(app.app_host, app.app_port))
 
-    await server.start()
-    await server.wait_for_termination()
+    server.start()
+    server.wait_for_termination()
 
 
 if __name__ == "__main__":
-    asyncio.run(serve())
+    serve()

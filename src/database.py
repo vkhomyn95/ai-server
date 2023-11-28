@@ -44,13 +44,15 @@ class VoicemailRecognitionDatabase:
                     host=_host,
                     port=_port,
                     database=_database,
-                    autocommit=True
+                    autocommit=True,
+                    reconnect=True
                 )
                 VoicemailRecognitionDatabase._database_instance = self
             except mariadb.Error as e:
                 logging.error(f'  >> Error connecting to MariaDB Platform: {e}')
                 sys.exit(1)
-
+            conn.auto_reconnect = True
+            self.conn = conn
             self.cur = conn.cursor(dictionary=True)
 
             # Run migrations
@@ -90,13 +92,17 @@ class VoicemailRecognitionDatabase:
             extension: str,
             user_id: int
     ):
-        current_date = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
-        self.cur.execute(
-            f'INSERT into recognition '
-            f'(created_date, final, request_uuid, audio_uuid, confidence, prediction, extension, user_id) '
-            f'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-            (current_date, final, request_uuid, audio_uuid, confidence * 100, prediction, extension, user_id,)
-        )
+        try:
+            current_date = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
+            self.cur.execute(
+                f'INSERT into recognition '
+                f'(created_date, final, request_uuid, audio_uuid, confidence, prediction, extension, user_id) '
+                f'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (current_date, final, request_uuid, audio_uuid, confidence * 100, prediction, extension, user_id,)
+            )
+        except mariadb.InterfaceError as e:
+            logging.error(f'  >> Error connecting to MariaDB Platform: {e}')
+            self.conn.reconnect()
 
     def insert_user(
             self,
@@ -137,21 +143,36 @@ class VoicemailRecognitionDatabase:
         return self.cur.lastrowid
 
     def load_user_by_id(self, user_id: int):
-        self.cur.execute(
-            f'SELECT * from user u left join tariff t on t.id=u.tariff_id where u.id=?',
-            (user_id,)
-        )
-        return self.cur.fetchone()
+        try:
+            self.cur.execute(
+                f'SELECT * from user u left join tariff t on t.id=u.tariff_id where u.id=?',
+                (user_id,)
+            )
+            return self.cur.fetchone()
+        except mariadb.InterfaceError as e:
+            logging.error(f'  >> Error connecting to MariaDB Platform: {e}')
+            self.conn.reconnect()
+            return self.load_user_by_id(user_id)
 
     def load_user_by_api_key(self, api_key: str):
-        self.cur.execute(
-            f'SELECT * from user u left join tariff t on t.id=u.tariff_id where u.api_key=?',
-            (api_key,)
-        )
-        return self.cur.fetchone()
+        try:
+            self.cur.execute(
+                f'SELECT * from user u left join tariff t on t.id=u.tariff_id where u.api_key=?',
+                (api_key,)
+            )
+            return self.cur.fetchone()
+        except mariadb.InterfaceError as e:
+            logging.error(f'  >> Error connecting to MariaDB Platform: {e}')
+            self.conn.reconnect()
+            return self.load_user_by_id(api_key)
 
     def increment_tariff(self, tariff_id, audio_size):
-        self.cur.execute(
-            f'UPDATE tariff SET request_size = request_size + 1, audio_size = audio_size + ?  where id = ?',
-            (audio_size,  tariff_id,)
-        )
+        try:
+            self.cur.execute(
+                f'UPDATE tariff SET request_size = request_size + 1, audio_size = audio_size + ?  where id = ?',
+                (audio_size,  tariff_id,)
+            )
+        except mariadb.InterfaceError as e:
+            logging.error(f'  >> Error connecting to MariaDB Platform: {e}')
+            self.conn.reconnect()
+            return self.increment_tariff(tariff_id, audio_size)

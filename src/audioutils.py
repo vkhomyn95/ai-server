@@ -90,7 +90,7 @@ class VoicemailRecognitionAudioUtil:
 
     def build_interim_condition(self, prediction):
         transcript = str(max(prediction, key=prediction.get)) if prediction else self.silence
-        confidence = round(prediction[transcript], 1) if prediction else 1.0
+        confidence = prediction[transcript] if prediction else 1.0
         return transcript, confidence
 
     def is_ring_condition(self, prediction):
@@ -107,13 +107,16 @@ class VoicemailRecognitionAudioUtil:
         if not result:
             return self.silence
         # Divide recognition results by len of predictions to count avg value
-        return result, round(value / len(predictions), 1)
+        return result, key.count(result) / len(predictions)
 
-    @staticmethod
-    def parse_config_from_request(stt_config):
-        return {
+    def parse_config_from_request(self, app, stt_config):
+        max_interval = stt_config.interim_results_config.interval
+        max_predictions = stt_config.interim_results_config.max_predictions
+        prediction_criteria = stt_config.interim_results_config.prediction_criteria
+        sample_rate_hertz = stt_config.config.sample_rate_hertz
+        configurations = {
             'encoding': stt_config.config.encoding,
-            'sample_rate_hertz': stt_config.config.sample_rate_hertz,
+            'sample_rate_hertz': sample_rate_hertz if sample_rate_hertz is not None else app.audio_sample_rate,
             'language_code': stt_config.config.language_code,
             'max_alternatives': stt_config.config.max_alternatives,
             'profanity_filter': stt_config.config.profanity_filter,
@@ -129,15 +132,23 @@ class VoicemailRecognitionAudioUtil:
             },
             'interim_results_config': {
                 'enable_interim_results': stt_config.interim_results_config.enable_interim_results,
-                'interval': stt_config.interim_results_config.interval,
-                'max_predictions': stt_config.interim_results_config.max_predictions,
-                'prediction_criteria': stt_config.interim_results_config.prediction_criteria,
+                'max_interval': max_interval if max_interval is not None else app.audio_interval,
+                'max_predictions': max_predictions if max_predictions is not None else app.max_predictions,
+                'prediction_criteria': prediction_criteria if prediction_criteria is not None else app.prediction_criteria,
             },
-            'enable_denormalization': stt_config.config.enable_denormalization,
             'enable_sentiment_analysis': stt_config.config.enable_sentiment_analysis,
             'enable_gender_identification': stt_config.config.enable_gender_identification,
             'extension': stt_config.config.channel_exten
         }
+
+        configurations['prediction_criteria'] = self.parse_config_prediction_criteria(
+            configurations['interim_results_config']['prediction_criteria'],
+            configurations['interim_results_config']['max_predictions']
+        )
+        configurations['desired_num_samples'] = (
+                configurations['sample_rate_hertz'] * configurations['interim_results_config']['max_interval']
+        )
+        return configurations
 
     @staticmethod
     def swap_zero_bytes(silence_chunks, chunks):
