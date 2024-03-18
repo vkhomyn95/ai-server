@@ -2,7 +2,7 @@ import logging
 
 import jwt
 
-from src.database import VoicemailRecognitionDatabase
+from src.database import Database
 
 
 class VoicemailRecognitionAuthenticator:
@@ -12,7 +12,7 @@ class VoicemailRecognitionAuthenticator:
         Initiated at the entry point
     """
 
-    def __init__(self, db: VoicemailRecognitionDatabase):
+    def __init__(self, db: Database):
         self.db = db
 
     def is_valid_bearer_token(self, bearer_token, request_id):
@@ -29,16 +29,10 @@ class VoicemailRecognitionAuthenticator:
             authentication = self.db.load_user_by_api_key(header_data["kid"])
             if authentication is not None:
                 # Check request in tariff
-                if bool(authentication["request"]):
-                    if authentication["request_size"] > authentication["request_limit"]:
+                if bool(authentication["active"]):
+                    if authentication["total"] <= authentication["used"]:
                         logging.error(f'== Request {request_id} authorization failed from {body_data["aud"]}'
                                       f' because request limit reached for user id={authentication["id"]}')
-                        return None
-                # Check audio in tariff
-                if bool(authentication["audio"]):
-                    if authentication["audio_size"] > authentication["audio_limit"]:
-                        logging.error(f'== Request {request_id} authorization failed from {body_data["aud"]}'
-                                      f' because audio limit reached for user id={authentication["id"]}')
                         return None
                 return authentication
 

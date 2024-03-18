@@ -9,8 +9,6 @@ env.bak/
 venv.bak/
 
 /ai/saved/voiptime.pth
-/ai/saved/voiptime2.pth
-/ai/saved/voiptime3.pth
 
 
 .DS_Store

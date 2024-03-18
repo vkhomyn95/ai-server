@@ -1,14 +1,9 @@
-from dataclasses import dataclass
 import os
-
-from src.auth import VoicemailRecognitionAuthenticator
-from src.database import VoicemailRecognitionDatabase
-from src.logger import Logger
-from src.audioutils import VoicemailRecognitionAudioUtil
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class VoicemailRecognitionApplication:
+class Variables:
     """ This class is responsible for saving and
         loading variables from the system environment.
 
@@ -17,7 +12,7 @@ class VoicemailRecognitionApplication:
 
     app_host: str = os.getenv(
         "APP_HOST",
-        "192.168.1.68"
+        "127.0.0.1"
     )
     app_port: str = os.getenv(
         "APP_PORT",
@@ -31,7 +26,7 @@ class VoicemailRecognitionApplication:
     # Directory for storing server logs
     logger_dir: str = os.getenv(
         "LOGGER_DIR",
-        "/stor/data/logs/"
+        "/stor/data/logs/server/"
     )
     # Default audio recognition interval
     audio_interval: float = float(os.getenv(
@@ -46,10 +41,10 @@ class VoicemailRecognitionApplication:
     # Default recognition prediction criteria
     prediction_criteria: str = os.getenv(
         "DEFAULT_PREDICTION_CRITERIA",
-        "(<human, human | human>,"
-        " <voicemail, human | human>,"
-        " <human, voicemail | human>,"
-        " <voicemail, voicemail | voicemail>)"
+        '{"1_interval_1": "True", "1_interval_2": "True", "1_result_3": "True",'
+        ' "2_interval_1": "True", "2_interval_2": "False", "2_result_3": "True",'
+        ' "3_interval_1": "False", "3_interval_2": "True", "3_result_3": "True",'
+        ' "4_interval_1": "False", "4_interval_2": "False", "4_result_3": "False"}'
     )
     # Default audio sample rate
     audio_sample_rate: int = int(os.getenv(
@@ -73,16 +68,4 @@ class VoicemailRecognitionApplication:
     database_password: str = os.getenv("DATABASE_PASSWORD", "root")
     database_host: str = os.getenv("DATABASE_HOST", "127.0.0.1")
     database_port: int = int(os.getenv("DATABASE_PORT", 3306))
-    database_name: str = os.getenv("DATABASE_NAME", "speecher")
-
-    # Class initialization
-    logger = Logger(logger_dir)
-    db = VoicemailRecognitionDatabase(
-        database_user,
-        database_password,
-        database_host,
-        database_port,
-        database_name
-    )
-    auth = VoicemailRecognitionAuthenticator(db.instance())
-    util = VoicemailRecognitionAudioUtil()
+    database_name: str = os.getenv("DATABASE_NAME", "amd")

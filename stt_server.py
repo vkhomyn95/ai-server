@@ -11,13 +11,26 @@ from google.protobuf import duration_pb2
 
 import stt_pb2
 import stt_pb2_grpc
-from src.application import VoicemailRecognitionApplication
+from src.audioutils import VoicemailRecognitionAudioUtil
+from src.auth import VoicemailRecognitionAuthenticator
+from src.database import Database
+from src.logger import Logger
+from src.variables import Variables
 
 
 class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
 
-    def __init__(self, _app: VoicemailRecognitionApplication):
-        self.app = _app
+    def __init__(
+            self,
+            _variables: Variables,
+            _auth: VoicemailRecognitionAuthenticator,
+            _util: VoicemailRecognitionAudioUtil,
+            _db: Database
+    ):
+        self.variables = _variables
+        self.auth = _auth
+        self.util = _util
+        self.db = _db
 
     def Recognize(
             self,
@@ -53,7 +66,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             token = metadata['authorization']
 
             # Load authentication principle
-            authentication = self.app.auth.is_valid_bearer_token(token, request_id)
+            authentication = self.auth.is_valid_bearer_token(token, request_id)
 
             # Validate authentication principle
             if not authentication:
@@ -72,7 +85,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 grpc.StatusCode.PERMISSION_DENIED, "Authorization failed"
             )
 
-    def __split_stream_amd(self, request_iterator, context, request_id, authentication):
+    def __split_stream_amd(self, request_iterator, context, request_id, user):
         """ Place the items from the request_iterator into each
             queue in the list of queues. When using VAD (continuous
             = True), the end-of-speech (EOS) can occur when the
@@ -86,13 +99,8 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             ]
         )
 
-        # Create the directory if it doesn't exist
-        os.makedirs(self.app.audio_dir, exist_ok=True)
-        os.makedirs(self.app.logger_dir, exist_ok=True)
-
         # retrieve variables to be initialized per request
-        configurations = next(request_iterator)
-        config = self.app.util.parse_config_from_request(self.app, configurations.streaming_config)
+        config = self.util.parse_config_from_request(next(request_iterator).streaming_config, user)
         predictions = []
         file_chunks = b''
         audio_chunks = b''
@@ -108,14 +116,14 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             num_received_samples += len(chunk.audio_content)
 
             if num_received_samples >= config['desired_num_samples'] and not predictions_count_reached:
-                filtered_chunks = self.app.util.swap_zero_bytes(self.app.audio_silence_coverage_chunks, audio_chunks)
+                filtered_chunks = self.util.swap_zero_bytes(self.variables.audio_silence_coverage_chunks, audio_chunks)
 
                 num_filtered_samples = len(filtered_chunks)
 
                 # if audio variable contains desired number of audio chunks
                 if num_filtered_samples >= config['desired_num_samples']:
                     file_name = str(uuid.uuid4()) + ".wav"
-                    file_path = os.path.join(self.app.audio_dir, file_name)
+                    file_path = os.path.join(self.variables.audio_dir, file_name)
 
                     with wave.open(file_path, 'wb') as wf:
                         wf.setnchannels(1)  # Mono audio
@@ -123,8 +131,8 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                         wf.setframerate(config['sample_rate_hertz'])  # Sample rate
                         wf.writeframes(audio_chunks)
 
-                    predicted = self.app.util.predict_sound_from_bytes(file_path)
-                    if not self.app.util.is_ring_condition(predicted):
+                    predicted = self.util.predict_sound_from_bytes(file_path)
+                    if not self.util.is_ring_condition(predicted):
                         predictions.append(predicted)
 
                     logging.info(
@@ -165,7 +173,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
 
                 # If interim result enabled and prediction count was reached than define final result
                 if config['interim_results_config']['enable_interim_results'] and predictions_count_reached:
-                    transcript, confidence = self.app.util.build_schema_condition(
+                    transcript, confidence = self.util.build_schema_condition(
                         predictions, config['prediction_criteria']
                     )
                     logging.info(
@@ -174,7 +182,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                     )
                 # If not interim result enabled than return interim result
                 else:
-                    transcript, confidence = self.app.util.build_interim_condition(predicted)
+                    transcript, confidence = self.util.build_interim_condition(predicted)
                     logging.info(
                         f'  == Request {request_id} predicted as {transcript}.'
                         f' Total recognition time elapsed {finish - start}'
@@ -195,19 +203,19 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 response.results.append(res)
 
                 # Store recognition result
-                self.app.db.insert_recognition(
+                self.db.insert_recognition(
                     predictions_count_reached,
                     request_id,
                     file_name,
                     confidence,
                     transcript,
                     config["extension"],
-                    authentication["id"]
+                    user["id"]
                 )
                 yield response
             elif predictions_count_reached:
                 file_name = request_id + ".wav"
-                file_path = os.path.join(self.app.audio_dir, file_name)
+                file_path = os.path.join(self.variables.audio_dir, file_name)
 
                 with wave.open(file_path, 'wb') as wf:
                     wf.setnchannels(1)  # Mono audio
@@ -215,9 +223,8 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                     wf.setframerate(config['sample_rate_hertz'])  # Sample rate
                     wf.writeframes(file_chunks)
 
-                self.app.db.increment_tariff(
-                    authentication["tariff_id"],
-                    int(len(predictions) * config['interim_results_config']['max_interval'])
+                self.db.increment_tariff(
+                    user["tariff_id"]
                 )
                 yield
 
@@ -233,14 +240,32 @@ def serve():
             max_workers=1
         )
     )
-    app = VoicemailRecognitionApplication()
+
+    variables = Variables()
+    # Create the directory if it doesn't exist
+    os.makedirs(variables.audio_dir, exist_ok=True)
+    os.makedirs(variables.logger_dir, exist_ok=True)
+
+    # Class initialization
+    logger = Logger(variables.logger_dir)
+
+    db = Database(
+        variables.database_user,
+        variables.database_password,
+        variables.database_host,
+        variables.database_port,
+        variables.database_name
+    )
+    auth = VoicemailRecognitionAuthenticator(db.instance())
+    util = VoicemailRecognitionAudioUtil(variables)
+
     stt_pb2_grpc.add_SpeechToTextServicer_to_server(
         SpeechToTextServicer(
-            app
+            variables, auth, util, db
         ),
         server
     )
-    server.add_insecure_port("{}:{}".format(app.app_host, app.app_port))
+    server.add_insecure_port("{}:{}".format(variables.app_host, variables.app_port))
 
     server.start()
     server.wait_for_termination()

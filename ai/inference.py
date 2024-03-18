@@ -2,8 +2,7 @@ import io
 
 import torch
 import torchaudio
-import numpy as np
-import tempfile
+
 from ai.cnn import CNNNetwork
 
 SAMPLE_RATE = 8000
@@ -16,7 +15,7 @@ class_mapping = [
 
 # Load trained model
 cnn = CNNNetwork()
-state_dict = torch.load("ai/saved/voiptime3.pth", map_location=torch.device('cpu'))
+state_dict = torch.load("ai/saved/voiptime.pth", map_location=torch.device('cpu'))
 cnn.load_state_dict(state_dict)
 cnn.eval()
 

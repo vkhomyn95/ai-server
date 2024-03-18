@@ -1,5 +1,5 @@
+import json
 import pickle
-import re
 
 import librosa.display
 import numpy as np
@@ -7,6 +7,7 @@ import torch
 from matplotlib import pyplot as plt
 
 from ai.models import ESC50Model
+from src.variables import Variables
 
 
 class VoicemailRecognitionAudioUtil:
@@ -16,16 +17,17 @@ class VoicemailRecognitionAudioUtil:
            Initiated at the entry point
     """
 
-    def __init__(self):
+    def __init__(self, _variables: Variables):
+        self.variables = _variables
         self.silence = "silence"
         self.ring = "ring"
         self.pattern = r'<(.*?)\s*\|\s*([^>]+)>'
         self.cnn = ESC50Model(input_shape=(1, 128, 431))
         self.device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-        self.state_dict = torch.load("ai/saved/voiptime3.pth", map_location=self.device)
+        self.state_dict = torch.load("ai/saved/voiptime.pth", map_location=self.device)
         self.cnn.load_state_dict(self.state_dict)
         self.cnn.eval()
-        with open('ai/saved/indexer3.pkl', 'rb') as f:
+        with open('ai/saved/indexer.pkl', 'rb') as f:
             self.indexer = pickle.load(f)
 
     def predict_sound_from_bytes(self, file_name):
@@ -76,17 +78,20 @@ class VoicemailRecognitionAudioUtil:
         spec_db = librosa.power_to_db(spec, top_db=top_db)
         return spec_db
 
-    def parse_config_prediction_criteria(self, predictions, iterations):
-        detected = dict()
-        for match in re.findall(self.pattern, predictions):
-            first_values = [value.strip() for value in match[0].split(',')]
-            result = match[1].strip()
-            phrase = ''
-            for index, first in enumerate(first_values):
-                if index < iterations:
-                    phrase += first
-            detected[phrase] = result
-        return detected
+    def parse_config_prediction_criteria(self, predictions):
+        if not predictions:
+            return self.variables.prediction_criteria
+        result = dict()
+        json_view_key = ''
+        json_view = json.loads(predictions)
+        for key, value in json_view.items():
+            if 'interval' in key:
+                json_view_key += 'human' if value else 'voicemail'
+            if 'result' in key:
+                json_view_value = 'human' if value == True else 'voicemail'
+                result[json_view_key] = json_view_value
+                json_view_key = ''
+        return result
 
     def build_interim_condition(self, prediction):
         transcript = str(max(prediction, key=prediction.get)) if prediction else self.silence
@@ -109,14 +114,10 @@ class VoicemailRecognitionAudioUtil:
         # Divide recognition results by len of predictions to count avg value
         return result, key.count(result) / len(predictions)
 
-    def parse_config_from_request(self, app, stt_config):
-        max_interval = stt_config.interim_results_config.interval
-        max_predictions = stt_config.interim_results_config.max_predictions
-        prediction_criteria = stt_config.interim_results_config.prediction_criteria
-        sample_rate_hertz = stt_config.config.sample_rate_hertz
+    def parse_config_from_request(self, stt_config, user):
         configurations = {
             'encoding': stt_config.config.encoding,
-            'sample_rate_hertz': sample_rate_hertz if sample_rate_hertz is not None else app.audio_sample_rate,
+            'sample_rate_hertz': user["rate"],
             'language_code': stt_config.config.language_code,
             'max_alternatives': stt_config.config.max_alternatives,
             'profanity_filter': stt_config.config.profanity_filter,
@@ -131,20 +132,15 @@ class VoicemailRecognitionAudioUtil:
                 'aggressiveness': stt_config.config.vad_config.aggressiveness
             },
             'interim_results_config': {
-                'enable_interim_results': stt_config.interim_results_config.enable_interim_results,
-                'max_interval': max_interval if max_interval is not None else app.audio_interval,
-                'max_predictions': max_predictions if max_predictions is not None else app.max_predictions,
-                'prediction_criteria': prediction_criteria if prediction_criteria is not None else app.prediction_criteria,
+                'enable_interim_results': bool(int.from_bytes(user["interim"], byteorder='big')),
+                'max_interval': user["interval_length"],
+                'max_predictions': user["predictions"],
+                'prediction_criteria': self.parse_config_prediction_criteria(user["prediction_criteria"]),
             },
             'enable_sentiment_analysis': stt_config.config.enable_sentiment_analysis,
             'enable_gender_identification': stt_config.config.enable_gender_identification,
             'extension': stt_config.config.channel_exten
         }
-
-        configurations['prediction_criteria'] = self.parse_config_prediction_criteria(
-            configurations['interim_results_config']['prediction_criteria'],
-            configurations['interim_results_config']['max_predictions']
-        )
         configurations['desired_num_samples'] = (
                 configurations['sample_rate_hertz'] * configurations['interim_results_config']['max_interval']
         )
