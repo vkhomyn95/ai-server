@@ -15,5 +15,7 @@ docker run -d --restart always --net=host -v /stor:/stor -v /etc/localtime:/etc/
         -e DATABASE_PASSWORD='root' \
         -e DATABASE_NAME='amd' \
         -e DATABASE_PORT=3306 \
+        -e SMTP_LOGIN="user" \
+        -e SMTP_PASSWORD="user" \
         -e PYTHONUNBUFFERED=0 \
         --name ai-server vk/ai-server
