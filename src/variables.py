@@ -71,5 +71,5 @@ class Variables:
     database_name: str = os.getenv("DATABASE_NAME", "amd")
 
     # Smtp
-    smtp_login: str = os.getenv("SMTP_LOGIN", "auth@voiptime.net")
-    smtp_password: str = os.getenv("SMTP_PASSWORD", "h9z1keQp9nROb1cdngSYmxUrU")
+    smtp_login: str = os.getenv("SMTP_LOGIN", "user")
+    smtp_password: str = os.getenv("SMTP_PASSWORD", "user")
