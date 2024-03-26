@@ -69,3 +69,7 @@ class Variables:
     database_host: str = os.getenv("DATABASE_HOST", "127.0.0.1")
     database_port: int = int(os.getenv("DATABASE_PORT", 3306))
     database_name: str = os.getenv("DATABASE_NAME", "amd")
+
+    # Smtp
+    smtp_login: str = os.getenv("SMTP_LOGIN", "auth@voiptime.net")
+    smtp_password: str = os.getenv("SMTP_PASSWORD", "h9z1keQp9nROb1cdngSYmxUrU")

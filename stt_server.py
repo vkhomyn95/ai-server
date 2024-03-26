@@ -15,6 +15,7 @@ from src.audioutils import VoicemailRecognitionAudioUtil
 from src.auth import VoicemailRecognitionAuthenticator
 from src.database import Database
 from src.logger import Logger
+from src.smtp import Smtp
 from src.variables import Variables
 
 
@@ -25,12 +26,14 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             _variables: Variables,
             _auth: VoicemailRecognitionAuthenticator,
             _util: VoicemailRecognitionAudioUtil,
-            _db: Database
+            _db: Database,
+            _smt: Smtp
     ):
         self.variables = _variables
         self.auth = _auth
         self.util = _util
         self.db = _db
+        self.smtp = _smt
 
     def Recognize(
             self,
@@ -174,7 +177,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 # If interim result enabled and prediction count was reached than define final result
                 if config['interim_results_config']['enable_interim_results'] and predictions_count_reached:
                     transcript, confidence = self.util.build_schema_condition(
-                        predictions, config['prediction_criteria']
+                        predictions, config['interim_results_config']['prediction_criteria']
                     )
                     logging.info(
                         f'  == Request {request_id} predicted schema was build as {transcript}.'
@@ -226,6 +229,9 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 self.db.increment_tariff(
                     user["tariff_id"]
                 )
+                left = user["total"] - user["used"]
+                if left == round(user["total"] * 0.1) or left == round(user["total"] * 0.05):
+                    self.smtp.send_email(user)
                 yield
 
 
@@ -248,6 +254,7 @@ def serve():
 
     # Class initialization
     logger = Logger(variables.logger_dir)
+    smtp = Smtp(variables.smtp_login, variables.smtp_password)
 
     db = Database(
         variables.database_user,
@@ -261,7 +268,7 @@ def serve():
 
     stt_pb2_grpc.add_SpeechToTextServicer_to_server(
         SpeechToTextServicer(
-            variables, auth, util, db
+            variables, auth, util, db, smtp
         ),
         server
     )

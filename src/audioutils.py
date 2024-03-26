@@ -86,9 +86,9 @@ class VoicemailRecognitionAudioUtil:
         json_view = json.loads(predictions)
         for key, value in json_view.items():
             if 'interval' in key:
-                json_view_key += 'human' if value else 'voicemail'
+                json_view_key += 'human' if value == 'True' else 'voicemail'
             if 'result' in key:
-                json_view_value = 'human' if value == True else 'voicemail'
+                json_view_value = 'human' if value == 'True' else 'voicemail'
                 result[json_view_key] = json_view_value
                 json_view_key = ''
         return result
@@ -106,6 +106,8 @@ class VoicemailRecognitionAudioUtil:
         value = 0.0
         for prediction in predictions:
             maximum = str(max(prediction, key=prediction.get))
+            if maximum == 'ring':
+                maximum = 'human'
             key += maximum
             value += prediction[maximum]
         result = prediction_criteria[key]
