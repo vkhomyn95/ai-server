@@ -1,4 +1,5 @@
 import logging
+import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -60,7 +61,7 @@ class Smtp:
         msg['Subject'] = "License usage alerting from VoIPtime AMD system!"
 
         try:
-            with open("/home/vkhomyn/PycharmProjects/ai-server/email.html", 'r') as file:
+            with open(os.path.join(os.getcwd(), 'email.html'), 'r') as file:
                 html_content = file.read()
                 html_content = html_content.replace("{email}", user["first_name"] + " " + user["last_name"])
                 html_content = html_content.replace("{requests}", str(user["total"] - user["used"]))
