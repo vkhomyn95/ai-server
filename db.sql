@@ -27,7 +27,7 @@
 -- Create table recognition config if does not exists
     CREATE TABLE IF NOT EXISTS `recognition_configuration` (
         `id` int(11) NOT NULL AUTO_INCREMENT,
-        `encoding` varchar(128) DEFAULT NULL,
+        `encoding` varchar(128) DEFAULT 'slin',
         `rate` int(11) NOT NULL,
         `interval_length` int(11) NOT NULL,
         `predictions` int(11) NOT NULL,
