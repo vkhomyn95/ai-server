@@ -116,8 +116,8 @@ class VoicemailRecognitionAudioUtil:
         # Divide recognition results by len of predictions to count avg value
         return result, key.count(result) / len(predictions)
 
-    def parse_config_from_request(self, stt_config, user):
-        configurations = {
+    def parse_request_config(self, stt_config, user):
+        return {
             'encoding': stt_config.config.encoding,
             'sample_rate_hertz': user["rate"],
             'language_code': stt_config.config.language_code,
@@ -126,27 +126,17 @@ class VoicemailRecognitionAudioUtil:
             'enable_automatic_punctuation': stt_config.config.enable_automatic_punctuation,
             'num_channels': stt_config.config.num_channels,
             'do_not_perform_vad': stt_config.config.do_not_perform_vad,
-            'vad_config': {
-                'min_speech_duration': stt_config.config.vad_config.min_speech_duration,
-                'max_speech_duration': stt_config.config.vad_config.max_speech_duration,
-                'silence_duration_threshold': stt_config.config.vad_config.silence_duration_threshold,
-                'silence_prob_threshold': stt_config.config.vad_config.silence_prob_threshold,
-                'aggressiveness': stt_config.config.vad_config.aggressiveness
-            },
-            'interim_results_config': {
-                'enable_interim_results': bool(int.from_bytes(user["interim"], byteorder='big')),
-                'max_interval': user["interval_length"],
-                'max_predictions': user["predictions"],
-                'prediction_criteria': self.parse_config_prediction_criteria(user["prediction_criteria"]),
-            },
-            'enable_sentiment_analysis': stt_config.config.enable_sentiment_analysis,
-            'enable_gender_identification': stt_config.config.enable_gender_identification,
-            'extension': stt_config.config.channel_exten
+            'max_predictions': user["predictions"],
+            'max_interval': user["interval_length"],
+            'prediction_criteria': self.parse_config_prediction_criteria(user["prediction_criteria"]),
+            'desired_num_samples': user["rate"] * user["interval_length"],
+            'extension': stt_config.config.channel_exten,
+            'company_id': stt_config.config.company_id,
+            'campaign_id': stt_config.config.campaign_id,
+            'application_id': stt_config.config.application_id,
+            'statistic_id': stt_config.config.statistic_id,
+            'request_id': stt_config.config.request_uuid
         }
-        configurations['desired_num_samples'] = (
-                configurations['sample_rate_hertz'] * configurations['interim_results_config']['max_interval']
-        )
-        return configurations
 
     @staticmethod
     def swap_zero_bytes(silence_chunks, chunks):

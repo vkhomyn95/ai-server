@@ -59,8 +59,10 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             and returns a stream of stt_pb2 StreamingRecognizeResponse messages
         """
 
-        request_id = str(uuid.uuid4())
-        logging.info(f'== Request {request_id} received from peer {context.peer()}')
+        # retrieve variables to be initialized per request
+        configurations = next(request_iterator).streaming_config
+
+        logging.info(f'== Request {configurations.config.request_uuid} received from peer {context.peer()}')
 
         # extract token from metadata and do validation for current request
         metadata = dict(context.invocation_metadata())
@@ -69,26 +71,27 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             token = metadata['authorization']
 
             # Load authentication principle
-            authentication = self.auth.is_valid_bearer_token(token, request_id)
+            authentication = self.auth.is_valid_bearer_token(token, configurations.config.request_uuid)
 
             # Validate authentication principle
             if not authentication:
-                logging.error(f'== Request {request_id} authorization failed using bearer {token}')
+                logging.error(f'== Request {configurations.config.request_uuid} authorization failed using bearer {token}')
                 context.abort(
                     grpc.StatusCode.PERMISSION_DENIED,
                     "Authorization failed using bearer {}".format(token)
                 )
 
+            config = self.util.parse_request_config(configurations, authentication)
             # AI AMD stream recognition
-            return self.__split_stream_amd(request_iterator, context, request_id, authentication)
+            return self.__split_stream_amd(request_iterator, context, authentication, config)
 
         else:
-            logging.error(f'== Request {request_id} authorization failed for None metadata')
+            logging.error(f'== Request {configurations.config.request_uuid} authorization failed for None metadata')
             context.abort(
                 grpc.StatusCode.PERMISSION_DENIED, "Authorization failed"
             )
 
-    def __split_stream_amd(self, request_iterator, context, request_id, user):
+    def __split_stream_amd(self, request_iterator, context, user, config):
         """ Place the items from the request_iterator into each
             queue in the list of queues. When using VAD (continuous
             = True), the end-of-speech (EOS) can occur when the
@@ -98,12 +101,10 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
 
         context.send_initial_metadata(
             [
-                ("x-request-id", request_id)
+                ("x-request-id", config["request_id"])
             ]
         )
 
-        # retrieve variables to be initialized per request
-        config = self.util.parse_config_from_request(next(request_iterator).streaming_config, user)
         predictions = []
         file_chunks = b''
         audio_chunks = b''
@@ -139,21 +140,21 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                         predictions.append(predicted)
 
                     logging.info(
-                        f' == Request {request_id} successfully predicted with {predicted} and stored to {file_path}'
+                        f' == Request {config["request_id"]} successfully predicted with {predicted} and stored to {file_path}'
                     )
                     num_received_samples = 0
                     audio_chunks = b''
                 # if audio variable contains zero number of audio chunks
                 elif num_filtered_samples == 0:
                     logging.info(
-                        f' == Request {request_id} unsuccessfully predicted because zero samples received'
+                        f' == Request {config["request_id"]} unsuccessfully predicted because zero samples received'
                     )
                     num_received_samples = 0
                     audio_chunks = b''
                 # if audio variable contains less than required number of audio chunks
                 else:
                     logging.info(
-                        f' == Request {request_id} unsuccessfully predicted because received {num_filtered_samples}'
+                        f' == Request {config["request_id"]} unsuccessfully predicted because received {num_filtered_samples}'
                         f' through required {config["desired_num_samples"]} audio samples'
                     )
                     audio_chunks = filtered_chunks
@@ -172,23 +173,53 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                         nanos=int((finish - int(finish)) * 10 ** 9)
                     )
                 )
-                predictions_count_reached = len(predictions) >= config['interim_results_config']['max_predictions']
+
+                transcript, confidence = self.util.build_interim_condition(predicted)
+
+                logging.info(
+                    f'  == Request {config["request_id"]} predicted as {transcript}.'
+                    f' Total recognition time elapsed {finish - start}'
+                )
+
+                # Store recognition result
+                self.db.insert_recognition(
+                    False,
+                    config["request_id"],
+                    file_name,
+                    confidence,
+                    transcript,
+                    config["extension"],
+                    user["id"],
+                    config["company_id"],
+                    config["campaign_id"],
+                    config["application_id"]
+                )
+
+                predictions_count_reached = len(predictions) >= config['max_predictions']
 
                 # If interim result enabled and prediction count was reached than define final result
-                if config['interim_results_config']['enable_interim_results'] and predictions_count_reached:
+                if predictions_count_reached:
                     transcript, confidence = self.util.build_schema_condition(
-                        predictions, config['interim_results_config']['prediction_criteria']
+                        predictions, config['prediction_criteria']
                     )
+
                     logging.info(
-                        f'  == Request {request_id} predicted schema was build as {transcript}.'
+                        f'  == Request {config["request_id"]} predicted schema was build as {transcript}.'
                         f' Total recognition time elapsed {finish - start}'
                     )
-                # If not interim result enabled than return interim result
-                else:
-                    transcript, confidence = self.util.build_interim_condition(predicted)
-                    logging.info(
-                        f'  == Request {request_id} predicted as {transcript}.'
-                        f' Total recognition time elapsed {finish - start}'
+
+                    # Store recognition result
+                    self.db.insert_recognition(
+                        True,
+                        config["request_id"],
+                        file_name,
+                        confidence,
+                        transcript,
+                        config["extension"],
+                        user["id"],
+                        config["company_id"],
+                        config["campaign_id"],
+                        config["application_id"]
                     )
 
                 # Build GRPC session response event
@@ -201,23 +232,13 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 res = stt_pb2.StreamingRecognitionResult(
                     recognition_result=recognition_result,
                     is_final=predictions_count_reached,
-                    request_uuid=request_id
+                    request_uuid=config["request_id"]
                 )
                 response.results.append(res)
 
-                # Store recognition result
-                self.db.insert_recognition(
-                    predictions_count_reached,
-                    request_id,
-                    file_name,
-                    confidence,
-                    transcript,
-                    config["extension"],
-                    user["id"]
-                )
                 yield response
             elif predictions_count_reached:
-                file_name = request_id + ".wav"
+                file_name = config["request_id"] + ".wav"
                 file_path = os.path.join(self.variables.audio_dir, file_name)
 
                 with wave.open(file_path, 'wb') as wf:
@@ -233,6 +254,22 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 if left == round(user["total"] * 0.1) or left == round(user["total"] * 0.05):
                     self.smtp.send_email(user)
                 yield
+
+        if not predictions_count_reached:
+            logging.info(f'  == Request {config["request_id"]} predicted schema was build as not_predicted.')
+            # Store recognition result
+            self.db.insert_recognition(
+                True,
+                config["request_id"],
+                None,
+                1,
+                "not_predicted",
+                config["extension"],
+                user["id"],
+                config["company_id"],
+                config["campaign_id"],
+                config["application_id"]
+            )
 
 
 def serve():

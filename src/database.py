@@ -89,15 +89,18 @@ class Database:
             confidence: float,
             prediction: str,
             extension: str,
-            user_id: int
+            user_id: int,
+            company_id: int,
+            campaign_id: int,
+            application_id: int
     ):
         try:
             current_date = datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S.%f')
             self.cur.execute(
                 f'INSERT into recognition '
-                f'(created_date, final, request_uuid, audio_uuid, confidence, prediction, extension, user_id) '
-                f'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                (current_date, final, request_uuid, audio_uuid, confidence * 100, prediction, extension, user_id,)
+                f'(created_date, final, request_uuid, audio_uuid, confidence, prediction, extension, user_id, company_id, campaign_id, application_id) '
+                f'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (current_date, final, request_uuid, audio_uuid, confidence * 100, prediction, extension, user_id, company_id, campaign_id, application_id)
             )
         except mariadb.InterfaceError as e:
             logging.error(f'  >> Error connecting to MariaDB Platform: {e}')
