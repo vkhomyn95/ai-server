@@ -73,3 +73,14 @@ class Variables:
     # Smtp
     smtp_login: str = os.getenv("SMTP_LOGIN", "user")
     smtp_password: str = os.getenv("SMTP_PASSWORD", "user")
+
+    # License server
+    license_server_address: str = os.getenv(
+        "LICENSE_SERVER_ADDRESS",
+        "http://127.0.0.1:5000"
+    )
+
+    license_server_access_token: str = os.getenv(
+        "LICENSE_SERVER_ACCESS_TOKEN",
+        "TOKEN"
+    )

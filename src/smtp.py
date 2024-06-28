@@ -1,10 +1,15 @@
+import json
 import logging
 import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from src.logger import Logger
+import requests
+
+from src.variables import Variables
+
+variables = Variables()
 
 
 class Smtp:
@@ -73,3 +78,5 @@ class Smtp:
             logging.info(f'::: Smtp send warning email to {user["email"]} with request usage.')
         except Exception as e:
             logging.info(f'::: Smtp send email failed : {str(e)} for user {user["email"]}.')
+
+        requests.post(variables.license_server_address, data=json.dumps(user))

@@ -15,7 +15,10 @@ class_mapping = [
 
 # Load trained model
 cnn = CNNNetwork()
-state_dict = torch.load("ai/saved/voiptime.pth", map_location=torch.device('cpu'))
+state_dict = torch.load(
+    "ai/saved/voiptime.pth",
+    map_location=torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+)
 cnn.load_state_dict(state_dict)
 cnn.eval()
 
