@@ -79,4 +79,4 @@ class Smtp:
         except Exception as e:
             logging.info(f'::: Smtp send email failed : {str(e)} for user {user["email"]}.')
 
-        requests.post(variables.license_server_address, data=json.dumps(user))
+        # requests.post(variables.license_server_address, data=json.dumps(user))
