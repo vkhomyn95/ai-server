@@ -22,11 +22,9 @@ RUN python -m pip install librosa
 
 RUN python -m pip install matplotlib
 
-RUN python -m pip install torch
+RUN python -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
 
-RUN python -m pip install torchvision
-
-RUN python -m pip install torchaudio
+RUN python -m pip install "numpy<2.0"
 
 RUN venv/bin/pip3 install --no-cache-dir -r requirements.txt
 
