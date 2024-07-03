@@ -23,7 +23,7 @@ class VoicemailRecognitionAudioUtil:
         self.ring = "ring"
         self.pattern = r'<(.*?)\s*\|\s*([^>]+)>'
         self.cnn = ESC50Model(input_shape=(1, 128, 431))
-        self.device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+        self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.state_dict = torch.load("ai/saved/voiptime.pth", map_location=self.device)
         self.cnn.load_state_dict(self.state_dict)
         self.cnn.eval()
