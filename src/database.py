@@ -54,32 +54,8 @@ class Database:
             self.conn = conn
             self.cur = conn.cursor(dictionary=True)
 
-            # Run migrations
-            self.exec_sql_file("db.sql")
-
-            # self.cur = conn.cursor()
-            # self.curd = conn.cursor(dictionary=True)
-
         else:
             raise Exception("{}: Cannot construct, an instance is already running.".format(__file__))
-
-    def exec_sql_file(self, sql_file):
-        logging.info(f'  >> Executing SQL script file: {sql_file}')
-        statement = ""
-
-        for line in open(sql_file):
-            if re.match(r'--', line):  # ignore sql comment lines
-                continue
-            if not re.search(r';$', line):  # keep appending lines that don't end in ';'
-                statement = statement + line
-            else:  # when you get a line ending in ';' then exec statement and reset for next statement
-                statement = statement + line
-                logging.debug(f'  >> Executing SQL statement:\n {statement}')
-                try:
-                    self.cur.execute(statement)
-                except (OperationalError, ProgrammingError) as e:
-                    logging.warning(f'  >> MySQLError during execute statement: {e.args}')
-                statement = ""
 
     def insert_recognition(
             self,
@@ -109,9 +85,13 @@ class Database:
     def load_user_by_api_key(self, api_key: str):
         try:
             self.cur.execute(
-                f'SELECT * from user u '
-                f'left join tariff t on t.id=u.tariff_id '
-                f'left join recognition_configuration c on c.id=u.recognition_id '
+                f'SELECT u.id as id, u.first_name as first_name, u.last_name as last_name, '
+                f'u.email as email, u.username as username, t.id as tariff_id, '
+                f't.active as active, c.id as recognition_id, c.predictions as predictions, '
+                f'c.prediction_criteria as prediction_criteria, c.interval_length as interval_length,'
+                f'c.rate as rate from user u '
+                f'left join tariff t on t.user_id=u.id '
+                f'left join recognition_configuration c on c.user_id=u.id '
                 f'where u.api_key=?',
                 (api_key,)
             )
@@ -124,7 +104,7 @@ class Database:
     def increment_tariff(self, tariff_id):
         try:
             self.cur.execute(
-                f'UPDATE tariff SET used = used + 1 where id = ?',
+                f'UPDATE tariff SET total = total - 1 where id = ?',
                 (tariff_id,)
             )
         except mariadb.InterfaceError as e:

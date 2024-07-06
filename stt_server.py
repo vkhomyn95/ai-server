@@ -247,12 +247,10 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                     wf.setframerate(config['sample_rate_hertz'])  # Sample rate
                     wf.writeframes(file_chunks)
 
-                self.db.increment_tariff(
-                    user["tariff_id"]
-                )
-                left = user["total"] - user["used"]
-                if left == round(user["total"] * 0.1) or left == round(user["total"] * 0.05):
-                    self.smtp.send_email(user)
+                self.db.increment_tariff(user["tariff_id"])
+                # left = user["total"] - 1
+                # if left == round(user["total"] * 0.1) or left == round(user["total"] * 0.05):
+                #     self.smtp.send_email(user)
                 yield
 
         if not predictions_count_reached:
