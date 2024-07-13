@@ -22,7 +22,7 @@ RUN python -m pip install librosa
 
 RUN python -m pip install matplotlib
 
-RUN python -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu121
+RUN python -m pip install -U torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu124
 
 RUN python -m pip install "numpy<2.0"
 
