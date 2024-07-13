@@ -12,7 +12,7 @@ class Variables:
 
     app_host: str = os.getenv(
         "APP_HOST",
-        "127.0.0.1"
+        "0.0.0.0"
     )
     app_port: str = os.getenv(
         "APP_PORT",
