@@ -29,8 +29,8 @@ class VoicemailRecognitionAuthenticator:
             authentication = self.db.load_user_by_api_key(header_data["kid"])
             if authentication is not None:
                 # Check request in tariff
-                if bool(int.from_bytes(authentication["active"], byteorder='big')):
-                    if authentication["total"] > 0:
+                if bool(authentication["active"]):
+                    if authentication["total"] <= 0:
                         logging.error(f'== Request {request_id} authorization failed from {body_data["aud"]}'
                                       f' because request limit reached for user id={authentication["id"]}')
                         return None

@@ -87,7 +87,7 @@ class Database:
             self.cur.execute(
                 f'SELECT u.id as id, u.first_name as first_name, u.last_name as last_name, '
                 f'u.email as email, u.username as username, t.id as tariff_id, '
-                f't.active as active, c.id as recognition_id, c.predictions as predictions, '
+                f't.active as active, t.total as total, c.id as recognition_id, c.predictions as predictions, '
                 f'c.prediction_criteria as prediction_criteria, c.interval_length as interval_length,'
                 f'c.rate as rate from user u '
                 f'left join tariff t on t.user_id=u.id '
