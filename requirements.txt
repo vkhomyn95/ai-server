@@ -9,3 +9,4 @@ matplotlib
 torch
 torchaudio
 torchvision
+numpy<2.0
