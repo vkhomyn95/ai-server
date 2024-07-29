@@ -26,6 +26,7 @@ class VoicemailRecognitionAudioUtil:
         self.device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
         self.state_dict = torch.load("ai/saved/voiptime.pth", map_location=self.device)
         self.cnn.load_state_dict(self.state_dict)
+        self.cnn.to(self.device)
         self.cnn.eval()
         with open('ai/saved/indexer.pkl', 'rb') as f:
             self.indexer = pickle.load(f)
