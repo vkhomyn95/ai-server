@@ -15,7 +15,6 @@ from src.audioutils import VoicemailRecognitionAudioUtil
 from src.auth import VoicemailRecognitionAuthenticator
 from src.database import Database
 from src.logger import Logger
-from src.smtp import Smtp
 from src.variables import Variables
 
 
@@ -26,14 +25,12 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
             _variables: Variables,
             _auth: VoicemailRecognitionAuthenticator,
             _util: VoicemailRecognitionAudioUtil,
-            _db: Database,
-            _smt: Smtp
+            _db: Database
     ):
         self.variables = _variables
         self.auth = _auth
         self.util = _util
         self.db = _db
-        self.smtp = _smt
 
     def Recognize(
             self,
@@ -289,7 +286,7 @@ def serve():
 
     # Class initialization
     logger = Logger(variables.logger_dir)
-    smtp = Smtp(variables.smtp_login, variables.smtp_password)
+    # smtp = Smtp(variables.smtp_login, variables.smtp_password)
 
     db = Database(
         variables.database_user,
