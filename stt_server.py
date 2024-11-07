@@ -127,7 +127,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 # if audio variable contains desired number of audio chunks
                 if num_filtered_samples >= config['desired_num_samples']:
                     file_name = str(uuid.uuid4()) + ".wav"
-                    file_path = os.path.join(self.variables.audio_dir, file_name)
+                    file_path = os.path.join(self.util.get_save_directory(), file_name)
 
                     with wave.open(file_path, 'wb') as wf:
                         wf.setnchannels(1)  # Mono audio
@@ -239,7 +239,7 @@ class SpeechToTextServicer(stt_pb2_grpc.SpeechToTextServicer):
                 yield response
             elif predictions_count_reached:
                 file_name = config["request_id"] + ".wav"
-                file_path = os.path.join(self.variables.audio_dir, file_name)
+                file_path = os.path.join(self.util.get_save_directory(), file_name)
 
                 with wave.open(file_path, 'wb') as wf:
                     wf.setnchannels(1)  # Mono audio

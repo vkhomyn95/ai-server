@@ -1,4 +1,6 @@
+import datetime
 import json
+import os
 import pickle
 
 import librosa.display
@@ -142,3 +144,12 @@ class VoicemailRecognitionAudioUtil:
     @staticmethod
     def swap_zero_bytes(silence_chunks, chunks):
         return chunks.replace(silence_chunks, b'')
+
+    def get_save_directory(self):
+        # Create directory path based on received date (year/month/day)
+        year, month, day = datetime.datetime.utcnow().strftime('%Y-%m-%d').split("-")
+        save_dir = os.path.join(self.variables.audio_dir, year, month, day)
+
+        # Create the directories if they do not exist
+        os.makedirs(save_dir, exist_ok=True)
+        return save_dir
