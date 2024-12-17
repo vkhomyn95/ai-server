@@ -300,7 +300,7 @@ def serve():
 
     stt_pb2_grpc.add_SpeechToTextServicer_to_server(
         SpeechToTextServicer(
-            variables, auth, util, db, smtp
+            variables, auth, util, db
         ),
         server
     )
