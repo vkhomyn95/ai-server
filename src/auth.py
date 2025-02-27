@@ -30,7 +30,7 @@ class VoicemailRecognitionAuthenticator:
             if authentication is not None:
                 # Check request in tariff
                 if bool(authentication["active"]):
-                    if authentication["total"] <= 0:
+                    if authentication["total"] <= -authentication["negative"]:
                         logging.error(f'== Request {request_id} authorization failed from {body_data["aud"]}'
                                       f' because request limit reached for user id={authentication["id"]}')
                         return None
